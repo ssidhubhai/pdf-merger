@@ -1,0 +1,6 @@
+{
+  "name": "Advanced PDF Merger",
+  "description": "Combine, reorder, and select page ranges with ease to merge your PDF documents securely in the browser.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
