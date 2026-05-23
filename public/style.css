@@ -1,0 +1,327 @@
+/* style.css */
+
+:root {
+    /* 🌟 NEW: Deep Navy Blue Background 🌟 */
+    --bg-color: #080840; 
+    
+    /* 🌟 NEW: Light text for contrast 🌟 */
+    --text-color: #ecf0f1; 
+    
+    --accent-color: #3498db; /* A bright, contrasting blue for primary actions */
+    --border-color: #5d6d7e; /* A lighter border for the drag zone */
+    --card-bg: #1f2937; /* Darker background for PDF cards */
+    --error-color: #e74c3c;
+    
+    /* 🌟 NEW: Variables for dark-themed upload/control areas 🌟 */
+    --dark-upload-bg: #1f2937; /* Very dark background for the zone */
+    --dark-upload-text: #ecf0f1;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    /* This rule will automatically pick up the new --bg-color */
+    background-color: var(--bg-color); 
+    /* Set body text to the new light color */
+    color: var(--text-color); 
+    
+    margin: 0;
+    padding: 2rem 1rem;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    min-height: 100vh;
+}
+
+.container {
+    width: 100%;
+    max-width: 900px;
+}
+
+header {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+header h1, header p {
+    color: var(--text-color); /* Ensure header text is visible */
+}
+
+header h1 {
+    font-size: 2.5rem;
+    margin: 0;
+}
+
+/* --- Upload Zone --- */
+.upload-zone {
+    /* 🌟 DARK UPLOAD ZONE STYLES 🌟 */
+    background-color: var(--dark-upload-bg);
+    color: var(--dark-upload-text);
+    border: 3px dashed var(--border-color); /* Use border-color for dashed line */
+    border-radius: 12px;
+    padding: 3rem;
+    text-align: center;
+    cursor: pointer;
+    transition: background-color 0.2s, border-color 0.2s;
+}
+.upload-zone.dragover {
+    background-color: #2c3e50; /* Slightly different shade on dragover */
+    border-color: var(--accent-color);
+}
+.upload-content p {
+    font-size: 1.2rem;
+    font-weight: 500;
+    margin: 0 0 1rem 0;
+    color: var(--dark-upload-text); /* Ensure text is light */
+}
+.upload-content .divider {
+    display: block;
+    margin: 1rem 0;
+    color: #a4b0be; /* Lighter color for divider on dark background */
+}
+
+/* --- Buttons --- */
+.btn {
+    padding: 0.8rem 1.5rem;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.1s, box-shadow 0.2s;
+    text-decoration: none;
+    display: inline-block;
+}
+.btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+}
+.btn-primary {
+    background-color: var(--accent-color);
+    color: white;
+}
+.btn-secondary {
+    /* Use dark background for secondary button in dark theme */
+    background-color: var(--border-color);
+    color: white; 
+}
+
+/* --- Staging Area --- */
+.staging-area.hidden, .upload-zone.hidden, .preview-panel.hidden, .progress-indicator.hidden, .page-range-controls.hidden, #download-btn.hidden {
+    display: none;
+}
+
+.pdf-list {
+    display: flex;
+    gap: 1rem;
+    padding: 1rem 0;
+    overflow-x: auto;
+    min-height: 220px;
+}
+
+/* --- Preview Card --- */
+.pdf-card {
+    flex-shrink: 0;
+    width: 160px;
+    background-color: var(--card-bg); /* Dark card background */
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0.5rem;
+    text-align: center;
+    cursor: grab;
+    position: relative;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    color: var(--text-color); /* Ensure card text is light */
+}
+.pdf-card.selected {
+    border-color: var(--accent-color);
+    border-width: 3px;
+    box-shadow: 0 0 15px rgba(52, 152, 219, 0.5);
+}
+.pdf-card .thumbnail {
+    /* Kept white for the PDF preview area */
+    width: 100%;
+    height: 150px;
+    background-color: white; 
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    cursor: pointer;
+}
+.pdf-card .thumbnail span {
+    color: #2c3e50; /* Dark text for "Uploading..." over white background */
+}
+.pdf-card .thumbnail canvas {
+    max-width: 100%;
+    max-height: 100%;
+}
+.file-info {
+    font-size: 0.8rem;
+    word-break: break-all;
+}
+.file-name {
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+}
+.file-meta {
+    color: #a4b0be; /* Light grey for file metadata */
+}
+.delete-btn {
+    position: absolute;
+    top: -10px;
+    right: -10px;
+    background-color: var(--error-color);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    font-size: 1rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* --- Page Range & Final Actions --- */
+.page-range-controls {
+    /* Dark background for controls */
+    background-color: #1f2937; 
+    color: var(--text-color);
+    padding: 1.5rem;
+    border-radius: 8px;
+    margin-top: 1rem;
+    text-align: center;
+    border: 1px solid var(--border-color);
+}
+.page-range-controls h4 {
+    margin: 0 0 1rem 0;
+}
+.page-range-inputs {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.5rem;
+}
+.page-range-inputs input {
+    width: 60px;
+    padding: 0.5rem;
+    text-align: center;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    /* Dark input background and light text */
+    background-color: #3e5065; 
+    color: white;
+}
+.final-actions {
+    margin-top: 2rem;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1rem;
+}
+.progress-indicator {
+    width: 200px;
+    text-align: center;
+}
+.progress-bar {
+    width: 100%;
+    height: 8px;
+    background-color: var(--border-color);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 0.5rem;
+}
+.progress-bar::before {
+    content: '';
+    display: block;
+    width: 50%;
+    height: 100%;
+    background-color: var(--accent-color);
+    border-radius: 4px;
+    animation: loading 1.5s infinite;
+}
+@keyframes loading {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(200%); }
+}
+
+/* --- Detailed Preview Panel --- */
+.preview-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 40%;
+    max-width: 500px;
+    height: 100vh;
+    /* Kept light for content preview */
+    background-color: #f1f2f6; 
+    color: #2c3e50;
+    box-shadow: -5px 0 15px rgba(0,0,0,0.3);
+    display: flex;
+    flex-direction: column;
+    transform: translateX(100%);
+    transition: transform 0.3s ease-in-out;
+}
+.preview-panel.visible {
+    transform: translateX(0);
+}
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+.panel-header h3 { margin: 0; }
+.panel-header button { background: none; border: none; font-size: 1.5rem; cursor: pointer; }
+.preview-content {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 1rem;
+    background-color: white; /* Kept white for content area */
+}
+.preview-content canvas {
+    display: block;
+    margin: 0 auto 1rem auto;
+    max-width: 100%;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+.panel-footer {
+    padding: 0.75rem 1rem;
+    border-top: 1px solid var(--border-color);
+    text-align: center;
+    background-color: #f1f2f6;
+    font-weight: 500;
+    flex-shrink: 0;
+}
+
+footer {
+    text-align: center;
+    margin-top: 3rem;
+    font-size: 0.9rem;
+}
+footer a {
+    color: #a4b0be;
+    text-decoration: none;
+}
+footer a:hover {
+    text-decoration: underline;
+}
+
+/* --- Mobile Responsiveness --- */
+@media (max-width: 768px) {
+    body { padding: 1rem 0.5rem; }
+    header h1 { font-size: 2rem; }
+    .pdf-list {
+        flex-wrap: wrap; 
+        justify-content: center;
+    }
+    .preview-panel { width: 95%; }
+    .final-actions {
+        flex-direction: column;
+    }
+}

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-g">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced PDF Merger</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Merge PDFs Online</h1>
+            <p>Combine, reorder, and select page ranges with ease.</p>
+        </header>
+
+        <main id="app-container">
+            <div id="upload-zone" class="upload-zone">
+                <div class="upload-content">
+                    <p>Drag & Drop Files Here</p>
+                    <span class="divider">or</span>
+                    <button id="select-files-btn" class="btn btn-primary">Select PDF Files</button>
+                    <input type="file" id="file-input" multiple accept="application/pdf" hidden>
+                </div>
+            </div>
+
+            <div id="staging-area" class="staging-area hidden">
+                <div id="pdf-list" class="pdf-list">
+                    </div>
+                
+                <div id="page-range-controls" class="page-range-controls hidden">
+                    </div>
+
+                <div class="final-actions">
+                     <button id="add-more-files-btn" class="btn btn-secondary">Add More Files</button>
+                    <button id="merge-btn" class="btn btn-primary">Merge PDFs</button>
+                    <a id="download-btn" class="btn btn-primary hidden" href="#" download="merged-document.pdf">Download PDF</a>
+                    <div id="progress-indicator" class="progress-indicator hidden">
+                        <div class="progress-bar"></div>
+                        <span>Merging...</span>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <a href="#">Privacy Policy</a>
+        </footer>
+    </div>
+
+    <aside id="preview-panel" class="preview-panel">
+        <div class="panel-header">
+            <h3 id="preview-filename"></h3>
+            <button id="close-preview-btn">&times;</button>
+        </div>
+        <div id="preview-content" class="preview-content">
+            </div>
+        <div class="panel-footer">
+            <span id="page-indicator">Page 1 of 1</span>
+        </div>
+    </aside>
+    
+    <script src="script.js"></script>
+</body>
+</html>
