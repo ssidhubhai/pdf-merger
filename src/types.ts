@@ -13,6 +13,13 @@ export interface PdfFile {
   password?: string;
 }
 
+export interface IndividualPageRef {
+  id: string;
+  fileId: string;
+  fileName: string;
+  sourcePageNum: number;
+}
+
 export interface MergeOptions {
   files: PdfFile[];
 }

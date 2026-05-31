@@ -10,12 +10,19 @@ import {
   FileCheck2,
   Minimize2,
   Zap,
+  Undo2,
+  ArrowUpDown,
+  Grid,
+  List,
+  Eye,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import UploadZone from './components/UploadZone';
 import PdfCard from './components/PdfCard';
 import PreviewPanel from './components/PreviewPanel';
-import { PdfFile } from './types';
+import MergedPreviewModal from './components/MergedPreviewModal';
+import PageOrganizer from './components/PageOrganizer';
+import { PdfFile, IndividualPageRef } from './types';
 import { 
   storeFileBinary, 
   getFileBinary, 
@@ -77,8 +84,173 @@ export default function App() {
   const [originalTotalSize, setOriginalTotalSize] = useState(0);
   const [compressedSize, setCompressedSize] = useState(0);
 
+  // Grid/List Layout Mode and Merged Preview States
+  const [layoutMode, setLayoutMode] = useState<'grid' | 'list'>('grid');
+  const [isMergedPreviewOpen, setIsMergedPreviewOpen] = useState(false);
+  const [mergedPdfBlob, setMergedPdfBlob] = useState<Blob | null>(null);
+
+  // Real-time Visual Page Organizer States
+  const [isOrganizerEnabled, setIsOrganizerEnabled] = useState(false);
+  const [individualPages, setIndividualPages] = useState<IndividualPageRef[] | null>(null);
+  const [pagesHistoryStack, setPagesHistoryStack] = useState<IndividualPageRef[][]>([]);
+
+  // Reverses the staged files list with full Undo preservation
+  const handleReverseFiles = () => {
+    if (files.length <= 1) return;
+    pushToHistory(files);
+    setFiles((prev) => [...prev].reverse());
+    setMergedPdfUrl(null);
+    setMergedPdfBlob(null);
+    // Sync organizer pages if they are active
+    if (isOrganizerEnabled && individualPages) {
+      const defaultPages = regenerateDefaultPages([...files].reverse());
+      pushToPagesHistory(individualPages);
+      setIndividualPages(defaultPages);
+    }
+  };
+
   // Drag and drop tracking indexes
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+
+  // Undo / Redo history state stack for card adjustments
+  const [historyStack, setHistoryStack] = useState<PdfFile[][]>([]);
+  const [preDragFiles, setPreDragFiles] = useState<PdfFile[] | null>(null);
+
+  // Helper to commit current state to stack before mutation
+  const pushToHistory = (currentState: PdfFile[]) => {
+    setHistoryStack((prev) => {
+      const next = [...prev, currentState];
+      if (next.length > 25) {
+        next.shift();
+      }
+      return next;
+    });
+  };
+
+  const pushToPagesHistory = (currentState: IndividualPageRef[]) => {
+    setPagesHistoryStack((prev) => {
+      const next = [...prev, currentState];
+      if (next.length > 25) {
+        next.shift();
+      }
+      return next;
+    });
+  };
+
+  // Generate sequence of individual pages from staged files
+  const regenerateDefaultPages = (currentFiles: PdfFile[]): IndividualPageRef[] => {
+    const defaultPages: IndividualPageRef[] = [];
+    currentFiles.filter(f => !f.needsPassword).forEach(f => {
+      for (let p = f.fromPage; p <= f.toPage; p++) {
+        defaultPages.push({
+          id: `page-${f.id}-${p}-${Math.random().toString(36).substring(2, 9)}`,
+          fileId: f.id,
+          fileName: f.name,
+          sourcePageNum: p
+        });
+      }
+    });
+    return defaultPages;
+  };
+
+  // Undo implementation to restore list layout safely
+  const handleUndo = async () => {
+    if (isOrganizerEnabled && individualPages) {
+      if (pagesHistoryStack.length === 0) return;
+      const nextHistory = [...pagesHistoryStack];
+      const previousState = nextHistory.pop();
+      if (previousState) {
+        setIndividualPages(previousState);
+        setPagesHistoryStack(nextHistory);
+        setMergedPdfUrl(null);
+        setMergedPdfBlob(null);
+      }
+      return;
+    }
+
+    if (historyStack.length === 0) return;
+    const nextHistory = [...historyStack];
+    const previousState = nextHistory.pop();
+    if (previousState) {
+      setErrorText('');
+      setMergedPdfUrl(null);
+      
+      // Keep IndexedDB store in sync for any cards brought back from deleted status
+      try {
+        for (const f of previousState) {
+          const alreadyInIndexedDB = files.some(current => current.id === f.id);
+          if (!alreadyInIndexedDB) {
+            await storeFileBinary(f.id, f.file);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to sync IndexedDB binaries upon undo action:', err);
+      }
+
+      setFiles(previousState);
+      setHistoryStack(nextHistory);
+    }
+  };
+
+  // Keyboard shortcut listener (Cmd+Z or Ctrl+Z)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        const activeTag = document.activeElement?.tagName.toLowerCase();
+        if (activeTag === 'input' || activeTag === 'textarea') {
+          return; // Let standard textbox undo work normally
+        }
+        e.preventDefault();
+        handleUndo();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [historyStack, files, isOrganizerEnabled, individualPages, pagesHistoryStack]);
+
+  // Sync individualPages with staged files password-unlock/decrypted states and deal with deletions
+  useEffect(() => {
+    if (!individualPages) return;
+
+    // 1. Remove pages from deleted files or files that now require password (locked back up)
+    const validFileIds = new Set(files.filter(f => !f.needsPassword).map(f => f.id));
+    let nextPages = individualPages.filter(p => validFileIds.has(p.fileId));
+
+    // 2. If a file was unlocked, or is new, let's see if we should automatically append its pages
+    const representedFileIds = new Set(nextPages.map(p => p.fileId));
+    const activeUnlockedFiles = files.filter(f => !f.needsPassword);
+    
+    let hasAdditions = false;
+    activeUnlockedFiles.forEach(f => {
+      if (!representedFileIds.has(f.id)) {
+        // Append all default pages of this newly added/unlocked file
+        for (let p = f.fromPage; p <= f.toPage; p++) {
+          nextPages.push({
+            id: `page-${f.id}-${p}-${Math.random().toString(36).substring(2, 9)}`,
+            fileId: f.id,
+            fileName: f.name,
+            sourcePageNum: p
+          });
+        }
+        hasAdditions = true;
+      }
+    });
+
+    // Check if pages order / list contents actually changed
+    const pagesLengthChanged = nextPages.length !== individualPages.length;
+    const contentsChanged = pagesLengthChanged || individualPages.some((p, idx) => p.id !== nextPages[idx]?.id);
+
+    if (contentsChanged) {
+      if (!hasAdditions) {
+        setIndividualPages(nextPages);
+      } else {
+        pushToPagesHistory(individualPages);
+        setIndividualPages(nextPages);
+      }
+      setMergedPdfUrl(null);
+      setMergedPdfBlob(null);
+    }
+  }, [files]);
 
   // Initialization states for offline persistence
   const [isInitialized, setIsInitialized] = useState(false);
@@ -224,9 +396,10 @@ export default function App() {
     }
   };
 
-  // Reordering functions (Manual click support)
+  // Reordering functions (Manual click support with Undo support)
   const moveLeft = (index: number) => {
     if (index === 0) return;
+    pushToHistory(files);
     setFiles((prev) => {
       const list = [...prev];
       const temp = list[index];
@@ -239,6 +412,7 @@ export default function App() {
 
   const moveRight = (index: number) => {
     if (index === files.length - 1) return;
+    pushToHistory(files);
     setFiles((prev) => {
       const list = [...prev];
       const temp = list[index];
@@ -249,8 +423,9 @@ export default function App() {
     setMergedPdfUrl(null);
   };
 
-  // Drag and Drop reordering callbacks
+  // Drag and Drop reordering callbacks with Undo preservation
   const handleDragStart = (index: number) => {
+    setPreDragFiles(files);
     setDraggedIndex(index);
   };
 
@@ -271,6 +446,13 @@ export default function App() {
   const handleDragEnd = () => {
     setDraggedIndex(null);
     setMergedPdfUrl(null);
+    if (preDragFiles) {
+      const changed = files.length !== preDragFiles.length || files.some((f, idx) => f.id !== preDragFiles[idx]?.id);
+      if (changed) {
+        pushToHistory(preDragFiles);
+      }
+      setPreDragFiles(null);
+    }
   };
 
   // Password Unlock Handler
@@ -328,6 +510,8 @@ export default function App() {
       setErrorText('File only has a single page. Split requires 2+ pages.');
       return;
     }
+
+    pushToHistory(files);
 
     setIsMerging(true);
     setMergeProgress(10);
@@ -402,6 +586,8 @@ export default function App() {
       return;
     }
 
+    pushToHistory(files);
+
     setIsMerging(true);
     setMergeProgress(20);
     setErrorText('');
@@ -468,8 +654,9 @@ export default function App() {
     setMergedPdfUrl(null); // Clear previous merge link
   };
 
-  // Deletion
+  // Deletion with Undo support
   const handleDelete = (id: string) => {
+    pushToHistory(files);
     setFiles((prev) => prev.filter((f) => f.id !== id));
     if (selectedFileId === id) {
       setSelectedFileId(null);
@@ -479,9 +666,14 @@ export default function App() {
   };
 
   const handleClearAll = () => {
+    if (files.length > 0) {
+      pushToHistory(files);
+    }
     setFiles([]);
     setSelectedFileId(null);
     setMergedPdfUrl(null);
+    setMergedPdfBlob(null);
+    setIsMergedPreviewOpen(false);
     setErrorText('');
     clearAllFileBinaries();
     localStorage.removeItem('staged_pdf_metadata');
@@ -492,6 +684,11 @@ export default function App() {
     const activeFilesList = files.filter(f => !f.needsPassword);
     if (activeFilesList.length === 0) {
       setErrorText('There are no unlocked files available to merge.');
+      return;
+    }
+
+    if (isOrganizerEnabled && individualPages && individualPages.length === 0) {
+      setErrorText('The page organizer has no pages staged. Click "Reset Pages" or check page limits.');
       return;
     }
 
@@ -507,31 +704,63 @@ export default function App() {
 
       // Import on demand to bypass module restrictions
       const { PDFDocument } = await import('pdf-lib');
-      setMergeProgress(30);
+      setMergeProgress(20);
 
       const mergedPdf = await PDFDocument.create();
-      
-      for (let i = 0; i < activeFilesList.length; i++) {
-        const fileObj = activeFilesList[i];
-        const arrayBuffer = await fileObj.file.arrayBuffer();
-        
-        // Load with decrypted password if one was submitted
-        const originalDoc = await PDFDocument.load(arrayBuffer, {
-          ignoreEncryption: true,
-          password: fileObj.password || undefined
-        } as any);
-        
-        // Form arrays of 0-indexed page numbers
-        const pagesToCopy: number[] = [];
-        for (let page = fileObj.fromPage; page <= fileObj.toPage; page++) {
-          pagesToCopy.push(page - 1);
+
+      if (isOrganizerEnabled && individualPages) {
+        // Optimized cache load for referenced documents to ensure performance
+        const referencedFileIds = Array.from(new Set(individualPages.map(p => p.fileId))) as string[];
+        const loadedPdfDocs = new Map<string, any>();
+        setMergeProgress(25);
+
+        for (const fId of referencedFileIds) {
+          const fileObj = activeFilesList.find(f => f.id === fId);
+          if (fileObj) {
+            const arrayBuffer = await fileObj.file.arrayBuffer();
+            const doc = await PDFDocument.load(arrayBuffer, {
+              ignoreEncryption: true,
+              password: fileObj.password || undefined
+            } as any);
+            loadedPdfDocs.set(fId, doc);
+          }
         }
 
-        const copiedPages = await mergedPdf.copyPages(originalDoc, pagesToCopy);
-        copiedPages.forEach((page) => mergedPdf.addPage(page));
+        setMergeProgress(40);
 
-        // Increment progress dynamically
-        setMergeProgress(30 + Math.floor((i / activeFilesList.length) * 50));
+        for (let i = 0; i < individualPages.length; i++) {
+          const pageRef = individualPages[i];
+          const docObj = loadedPdfDocs.get(pageRef.fileId);
+          if (docObj) {
+            const copiedPages = await mergedPdf.copyPages(docObj, [pageRef.sourcePageNum - 1]);
+            mergedPdf.addPage(copiedPages[0]);
+          }
+          // Increment progress dynamically
+          setMergeProgress(40 + Math.floor((i / individualPages.length) * 45));
+        }
+      } else {
+        // Sequential file-based merge
+        for (let i = 0; i < activeFilesList.length; i++) {
+          const fileObj = activeFilesList[i];
+          const arrayBuffer = await fileObj.file.arrayBuffer();
+          
+          // Load document
+          const originalDoc = await PDFDocument.load(arrayBuffer, {
+            ignoreEncryption: true,
+            password: fileObj.password || undefined
+          } as any);
+          
+          const pagesToCopy: number[] = [];
+          for (let page = fileObj.fromPage; page <= fileObj.toPage; page++) {
+            pagesToCopy.push(page - 1);
+          }
+
+          const copiedPages = await mergedPdf.copyPages(originalDoc, pagesToCopy);
+          copiedPages.forEach((page) => mergedPdf.addPage(page));
+
+          // Increment progress dynamically
+          setMergeProgress(20 + Math.floor((i / activeFilesList.length) * 65));
+        }
       }
 
       setMergeProgress(90);
@@ -552,6 +781,7 @@ export default function App() {
       const downloadPathUrl = URL.createObjectURL(blob);
       
       setMergedPdfUrl(downloadPathUrl);
+      setMergedPdfBlob(blob);
       setMergeProgress(100);
       
       // Auto-trigger preview panel close to focus on actions
@@ -656,18 +886,58 @@ export default function App() {
         ) : (
           /* Staged files interface */
           <div className={`w-full transition-all duration-300 ${selectedFileId ? 'md:pr-[300px]' : ''}`}>
+            {/* Visual View-Mode Selection Tab Switcher */}
+            <div id="visual-view-mode-tabs" className="flex bg-slate-900 p-1 rounded-xl border border-slate-800/80 mb-6 max-w-sm">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsOrganizerEnabled(false);
+                  setMergedPdfUrl(null);
+                  setMergedPdfBlob(null);
+                }}
+                className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center space-x-2 transition-all cursor-pointer ${
+                  !isOrganizerEnabled
+                    ? 'bg-slate-800 text-indigo-400 border border-slate-700/60 shadow'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <span>🗂️ Document Cards</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setErrorText('');
+                  setMergedPdfUrl(null);
+                  setMergedPdfBlob(null);
+                  if (!individualPages) {
+                    setIndividualPages(regenerateDefaultPages(files));
+                  }
+                  setIsOrganizerEnabled(true);
+                }}
+                className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center space-x-2 transition-all cursor-pointer ${
+                  isOrganizerEnabled
+                    ? 'bg-slate-800 text-indigo-400 border border-slate-700/60 shadow'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <span>📄 Page Organizer</span>
+              </button>
+            </div>
+
             {/* Context bar with quick actions */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-900">
               <div>
-                <h3 className="text-sm font-semibold text-slate-300">
-                  Staged Blueprints ({files.length} document{files.length > 1 ? 's' : ''})
+                <h3 className="text-sm font-semibold text-slate-300 animate-fade-in">
+                  {isOrganizerEnabled ? 'Compiled Page Sequence' : `Staged Blueprints (${files.length} document${files.length > 1 ? 's' : ''})`}
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Change ranges, drag cards to reorder, and click tools to split files.
+                  {isOrganizerEnabled 
+                    ? 'Drag and drop page nodes or click arrows to order them before compiling.' 
+                    : 'Change ranges, drag cards to reorder, and click tools to split files.'}
                 </p>
               </div>
 
-              <div className="flex items-center space-x-2 w-full sm:w-auto">
+              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                 {/* Embedded File Uploader Trigger */}
                 <label className="flex-1 sm:flex-none flex items-center justify-center space-x-1.5 bg-slate-900 hover:bg-slate-800 text-slate-200 hover:text-white px-3.5 py-2 rounded-lg text-xs font-semibold cursor-pointer border border-slate-800 transition-colors">
                   <Plus className="w-4 h-4 text-indigo-400" />
@@ -682,6 +952,60 @@ export default function App() {
                     }}
                   />
                 </label>
+
+                {/* Reverse button action tracker with Undo preservation */}
+                {!isOrganizerEnabled && (
+                  <button
+                    onClick={handleReverseFiles}
+                    className="px-3.5 py-2 border border-slate-800 rounded-lg hover:border-slate-700 bg-slate-900/40 text-slate-300 hover:text-white text-xs font-semibold transition-colors flex items-center justify-center space-x-1.5 cursor-pointer"
+                    title="Reverse sequence order of staged files (Undoable)"
+                  >
+                    <ArrowUpDown className="w-3.5 h-3.5 text-indigo-400" />
+                    <span className="hidden sm:inline">Reverse List</span>
+                  </button>
+                )}
+
+                {/* Grid visual vs Single List row View toggle layout switcher */}
+                {!isOrganizerEnabled && (
+                  <div className="flex items-center bg-slate-900/40 border border-slate-800 rounded-lg p-0.5 shadow-sm">
+                    <button
+                      onClick={() => setLayoutMode('grid')}
+                      className={`p-1.5 rounded transition-colors cursor-pointer ${
+                        layoutMode === 'grid'
+                          ? 'bg-slate-800 text-indigo-400 border border-slate-700/60'
+                          : 'text-slate-500 hover:text-slate-300'
+                      }`}
+                      title="Grid layout representation"
+                    >
+                      <Grid className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => setLayoutMode('list')}
+                      className={`p-1.5 rounded transition-colors cursor-pointer ${
+                        layoutMode === 'list'
+                          ? 'bg-slate-800 text-indigo-400 border border-slate-700/60'
+                          : 'text-slate-500 hover:text-slate-300'
+                      }`}
+                      title="Vertical list rows"
+                    >
+                      <List className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+
+                {((!isOrganizerEnabled && historyStack.length > 0) || (isOrganizerEnabled && pagesHistoryStack.length > 0)) && (
+                  <motion.button
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    onClick={handleUndo}
+                    className="px-3.5 py-2 border border-slate-800 rounded-lg hover:border-slate-700 bg-slate-900/40 text-indigo-400 hover:text-indigo-300 hover:bg-slate-900 text-xs font-semibold transition-all flex items-center justify-center space-x-1.5 shadow-lg shadow-indigo-950/10 cursor-pointer"
+                    title="Undo last action (Ctrl+Z)"
+                  >
+                    <Undo2 className="w-4 h-4" />
+                    <span>Undo</span>
+                    <span className="hidden md:inline text-[9px] font-mono text-indigo-500 bg-slate-950/80 px-1 py-0.5 rounded border border-indigo-950/40">Ctrl+Z</span>
+                  </motion.button>
+                )}
 
                 <button
                   onClick={handleClearAll}
@@ -699,30 +1023,52 @@ export default function App() {
               </div>
             )}
 
-            {/* List horizontal roll / flex layout */}
-            <div className="flex flex-wrap gap-4 justify-start pb-4 overflow-y-visible">
-              {files.map((file, index) => (
-                <PdfCard
-                  key={file.id}
-                  file={file}
-                  isSelected={selectedFileId === file.id}
-                  onSelect={() => setSelectedFileId(file.id)}
-                  onDelete={() => handleDelete(file.id)}
-                  onMoveLeft={() => moveLeft(index)}
-                  onMoveRight={() => moveRight(index)}
-                  onRangeChange={(from, to) => handleRangeChange(file.id, from, to)}
-                  isFirst={index === 0}
-                  isLast={index === files.length - 1}
-                  onDragStart={() => handleDragStart(index)}
-                  onDragOver={(e) => handleDragOver(e, index)}
-                  onDragEnd={handleDragEnd}
-                  isDragging={draggedIndex === index}
-                  onUnlockPassword={handleUnlockPassword}
-                  onSplitAllPages={() => handleSplitAllPages(file.id)}
-                  onExtractSelectedRange={() => handleExtractSelectedRange(file.id)}
-                />
-              ))}
-            </div>
+            {isOrganizerEnabled && individualPages ? (
+              <PageOrganizer
+                files={files}
+                pages={individualPages}
+                onPagesChange={(nextPages) => {
+                  pushToPagesHistory(individualPages);
+                  setIndividualPages(nextPages);
+                  setMergedPdfUrl(null);
+                  setMergedPdfBlob(null);
+                }}
+                onResetToDefault={() => {
+                  pushToPagesHistory(individualPages);
+                  setIndividualPages(regenerateDefaultPages(files));
+                  setMergedPdfUrl(null);
+                  setMergedPdfBlob(null);
+                }}
+                canUndo={pagesHistoryStack.length > 0}
+                onUndo={handleUndo}
+              />
+            ) : (
+              /* List horizontal roll / flex layout */
+              <div className={layoutMode === 'grid' ? "flex flex-wrap gap-4 justify-start pb-4 overflow-y-visible" : "flex flex-col gap-3.5 w-full pb-4 overflow-y-visible"}>
+                {files.map((file, index) => (
+                  <PdfCard
+                    key={file.id}
+                    file={file}
+                    layout={layoutMode}
+                    isSelected={selectedFileId === file.id}
+                    onSelect={() => setSelectedFileId(file.id)}
+                    onDelete={() => handleDelete(file.id)}
+                    onMoveLeft={() => moveLeft(index)}
+                    onMoveRight={() => moveRight(index)}
+                    onRangeChange={(from, to) => handleRangeChange(file.id, from, to)}
+                    isFirst={index === 0}
+                    isLast={index === files.length - 1}
+                    onDragStart={() => handleDragStart(index)}
+                    onDragOver={(e) => handleDragOver(e, index)}
+                    onDragEnd={handleDragEnd}
+                    isDragging={draggedIndex === index}
+                    onUnlockPassword={handleUnlockPassword}
+                    onSplitAllPages={() => handleSplitAllPages(file.id)}
+                    onExtractSelectedRange={() => handleExtractSelectedRange(file.id)}
+                  />
+                ))}
+              </div>
+            )}
 
             {/* Final Actions Container */}
             <div className="mt-12 bg-gradient-to-b from-slate-900 to-slate-950 p-6 rounded-2xl border border-slate-900 shadow-xl flex flex-col items-center text-center w-full">
@@ -807,18 +1153,30 @@ export default function App() {
                     <a
                       href={mergedPdfUrl}
                       download={suggestedFilename.endsWith('.pdf') ? suggestedFilename : `${suggestedFilename}.pdf`}
-                      className="w-full sm:w-auto bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center justify-center space-x-2 text-sm shadow-lg shadow-emerald-500/10 transition-all hover:scale-[1.01]"
+                      className="w-full sm:w-auto bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-semibold py-2.5 px-5 rounded-xl flex items-center justify-center space-x-2 text-sm shadow-lg shadow-emerald-500/10 transition-all hover:scale-[1.01]"
                     >
                       <FileDown className="w-4 h-4" />
                       <span>Download Merged PDF</span>
                     </a>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsMergedPreviewOpen(true)}
+                      className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2.5 px-5 rounded-xl transition-all flex items-center justify-center space-x-2 text-sm shadow cursor-pointer hover:scale-[1.01]"
+                    >
+                      <Eye className="w-4 h-4 text-indigo-200" />
+                      <span>Preview PDF</span>
+                    </button>
                     
                     <button
-                      onClick={() => setMergedPdfUrl(null)}
-                      className="w-full sm:w-auto bg-slate-900 hover:bg-slate-800 text-slate-300 font-medium py-2.5 px-5 rounded-xl border border-slate-800 text-xs transition-colors flex items-center justify-center space-x-1"
+                      onClick={() => {
+                        setMergedPdfUrl(null);
+                        setMergedPdfBlob(null);
+                      }}
+                      className="w-full sm:w-auto bg-slate-900 hover:bg-slate-800 text-slate-300 font-medium py-2.5 px-4 rounded-xl border border-slate-800 text-xs transition-colors flex items-center justify-center space-x-1 cursor-pointer"
                     >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      <span>Blend Again</span>
+                      <RefreshCw className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Reset Merge</span>
                     </button>
                   </div>
                 </motion.div>
@@ -1056,6 +1414,15 @@ export default function App() {
             handleRangeChange(selectedFileId, from, to);
           }
         }}
+      />
+
+      {/* Merged PDF Preview Modal Overlay */}
+      <MergedPreviewModal
+        isOpen={isMergedPreviewOpen}
+        onClose={() => setIsMergedPreviewOpen(false)}
+        pdfUrl={mergedPdfUrl}
+        pdfBlob={mergedPdfBlob}
+        filename={suggestedFilename || 'merged-document.pdf'}
       />
     </div>
   );

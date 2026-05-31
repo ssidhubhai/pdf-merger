@@ -1,5 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Trash2, MoveLeft, MoveRight, Eye, Lock, RefreshCw, Scissors, CopyPlus } from 'lucide-react';
+import { 
+  Trash2, 
+  MoveLeft, 
+  MoveRight, 
+  Eye, 
+  Lock, 
+  RefreshCw, 
+  Scissors, 
+  CopyPlus,
+  MoveUp,
+  MoveDown
+} from 'lucide-react';
 import { PdfFile } from '../types';
 
 interface PdfCardProps {
@@ -23,6 +34,7 @@ interface PdfCardProps {
   // Split support
   onSplitAllPages?: () => void;
   onExtractSelectedRange?: () => void;
+  layout?: 'grid' | 'list';
 }
 
 export default function PdfCard({
@@ -42,6 +54,7 @@ export default function PdfCard({
   onUnlockPassword,
   onSplitAllPages,
   onExtractSelectedRange,
+  layout = 'grid',
 }: PdfCardProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [thumbnailLoaded, setThumbnailLoaded] = useState(false);
@@ -157,6 +170,235 @@ export default function PdfCard({
     }
   };
 
+  if (layout === 'list') {
+    return (
+      <div
+        onClick={onSelect}
+        draggable={!file.needsPassword}
+        onDragStart={onDragStart}
+        onDragOver={onDragOver}
+        onDragEnd={onDragEnd}
+        className={`group relative flex flex-col w-full rounded-xl bg-slate-900 border-2 text-slate-100 p-4 transition-all duration-300 select-none ${
+          file.needsPassword ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'
+        } ${
+          isDragging
+            ? 'opacity-40 border-dashed border-indigo-500/50 scale-[0.99] bg-slate-950/20'
+            : isSelected
+            ? 'border-indigo-500 bg-slate-900/40 shadow-lg shadow-indigo-500/10'
+            : 'border-slate-800 hover:border-slate-700 hover:bg-slate-900/60 shadow-md'
+        }`}
+      >
+        {file.needsPassword ? (
+          /* Locked Inline Row Details */
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between w-full gap-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center space-x-3.5 flex-1 min-w-0">
+              <div className="p-2 rounded-full bg-rose-500/10 text-rose-450 shrink-0">
+                <Lock className="w-4 h-4 animate-pulse" />
+              </div>
+              <div className="min-w-0">
+                <span className="text-[9px] font-bold text-rose-400 uppercase tracking-widest font-mono block">Encrypted Segment</span>
+                <p className="text-xs text-slate-300 font-semibold truncate max-w-xs md:max-w-md" title={file.name}>{file.name}</p>
+              </div>
+            </div>
+            
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
+              <form onSubmit={handleUnlockSubmit} className="flex items-center gap-1.5 w-full sm:w-auto">
+                <input
+                  type="password"
+                  required
+                  value={passwordInput}
+                  onChange={(e) => {
+                    setPasswordInput(e.target.value);
+                    setUnlockError('');
+                  }}
+                  placeholder="Password required"
+                  className="text-xs font-mono bg-slate-950 border border-slate-800 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 outline-none rounded-lg p-1.5 text-slate-100 placeholder-slate-600 w-full sm:w-36"
+                />
+                <button
+                  type="submit"
+                  disabled={unlocking}
+                  className="bg-gradient-to-r from-rose-500 to-red-650 hover:from-rose-600 hover:to-red-750 text-white font-bold py-1.5 px-3 rounded-lg text-xs flex items-center justify-center space-x-1 cursor-pointer shrink-0 transition-all shadow"
+                >
+                  {unlocking ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <span>Unlock</span>}
+                </button>
+              </form>
+              {unlockError && (
+                <span className="text-[10px] text-rose-400 font-semibold text-center sm:text-left block animate-shake">
+                  {unlockError}
+                </span>
+              )}
+
+              {/* Delete on Lock */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete();
+                }}
+                className="p-1.5 rounded-lg border border-slate-800 hover:border-rose-900/40 text-slate-400 hover:text-rose-400 bg-slate-950 flex items-center justify-center transition-colors cursor-pointer"
+                title="Remove doc"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* Standard Row layout for list view mode */
+          <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between w-full gap-4">
+            
+            {/* Left section: Index and Thumbnail representation and name details */}
+            <div className="flex items-center gap-3.5 flex-1 min-w-0">
+              
+              {/* Dynamic list reorder handlers (rendered on hover / always on mobile) */}
+              <div className="flex flex-col gap-1.5 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-200">
+                {!isFirst && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onMoveLeft();
+                    }}
+                    className="p-1 rounded bg-slate-950 hover:bg-indigo-600 border border-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                    title="Move Up"
+                  >
+                    <MoveUp className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                {!isLast && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onMoveRight();
+                    }}
+                    className="p-1 rounded bg-slate-950 hover:bg-indigo-600 border border-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                    title="Move Down"
+                  >
+                    <MoveDown className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Thumb card */}
+              <div className="relative w-12 h-14 bg-slate-950 border border-slate-800/80 rounded overflow-hidden flex items-center justify-center shrink-0">
+                {!thumbnailLoaded && (
+                  <div className="w-4 h-4 border border-indigo-400 border-t-transparent rounded-full animate-spin"></div>
+                )}
+                <canvas
+                  ref={canvasRef}
+                  className={`max-w-full max-h-full object-contain ${
+                    thumbnailLoaded && !errorLoading ? 'block' : 'hidden'
+                  }`}
+                />
+
+                <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                  <Eye className="w-3.5 h-3.5 text-indigo-400" />
+                </div>
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <h4 className="text-sm font-semibold text-slate-200 truncate group-hover:text-indigo-300 transition-colors" title={file.name}>
+                  {file.name}
+                </h4>
+                <div className="flex items-center space-x-2.5 mt-1 font-mono text-[10px] text-slate-400">
+                  <span className="bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800/60 font-bold">
+                    {file.totalPages} pages
+                  </span>
+                  <span>{file.size}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Middle section: page select parameters config */}
+            <div className="flex items-center gap-3 shrink-0 bg-slate-950/40 border border-slate-800/50 p-2 rounded-xl" onClick={(e) => e.stopPropagation()}>
+              <div className="space-y-1">
+                <span className="text-[8px] uppercase tracking-wider text-slate-500 font-extrabold block">Blend segment pages</span>
+                <div className="flex items-center gap-1.5">
+                  <div className="flex items-center space-x-1">
+                    <span className="text-[10px] text-slate-500 font-mono">From</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={file.totalPages}
+                      value={file.fromPage}
+                      onChange={(e) => handleFromChange(parseInt(e.target.value) || 1)}
+                      className="w-12 text-xs font-mono bg-slate-950 border border-slate-850 focus:border-indigo-500 outline-none rounded p-1 text-center text-slate-250 font-bold"
+                    />
+                  </div>
+                  <div className="flex items-center space-x-1">
+                    <span className="text-[10px] text-slate-500 font-mono">To</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={file.totalPages}
+                      value={file.toPage}
+                      onChange={(e) => handleToChange(parseInt(e.target.value) || file.totalPages)}
+                      className="w-12 text-xs font-mono bg-slate-950 border border-slate-850 focus:border-indigo-500 outline-none rounded p-1 text-center text-slate-250 font-bold"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Progress scale bar representation */}
+              <div className="hidden sm:flex flex-col w-20 px-1 justify-center">
+                <span className="text-[8px] font-mono text-indigo-400 text-center mb-0.5 font-bold">
+                  {file.toPage - file.fromPage + 1} pages
+                </span>
+                <div className="w-full bg-slate-950 h-1.5 rounded overflow-hidden relative border border-slate-850/60">
+                  <div
+                    className="absolute bg-gradient-to-r from-indigo-500 to-purple-500 h-full"
+                    style={{
+                      left: `${((file.fromPage - 1) / file.totalPages) * 100}%`,
+                      width: `${((file.toPage - file.fromPage + 1) / file.totalPages) * 100}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Right section: Splitting layout elements and Delete card */}
+            <div className="flex items-center justify-end gap-2 shrink-0">
+              {isSelected && (
+                <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    onClick={() => onSplitAllPages?.()}
+                    className="inline-flex items-center justify-center gap-1 bg-slate-950 hover:bg-slate-800 border border-slate-850 hover:border-slate-700 text-[10px] font-bold text-indigo-400 py-1.5 px-3 rounded-lg transition-all cursor-pointer"
+                    title="Split into single page documents"
+                  >
+                    <Scissors className="w-3 h-3 text-indigo-500" />
+                    <span className="hidden md:inline">Split All</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onExtractSelectedRange?.()}
+                    className="inline-flex items-center justify-center gap-1 bg-slate-950 hover:bg-slate-800 border border-slate-850 hover:border-slate-700 text-[10px] font-bold text-purple-400 py-1.5 px-3 rounded-lg transition-all cursor-pointer"
+                    title="Save current range as split standalone copy"
+                  >
+                    <CopyPlus className="w-3 h-3 text-purple-500" />
+                    <span className="hidden md:inline">Slice Segment</span>
+                  </button>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete();
+                }}
+                className="p-1.5 rounded-lg border border-slate-800 hover:border-rose-900/40 text-slate-400 hover:text-rose-400 bg-slate-950 flex items-center justify-center transition-colors cursor-pointer"
+                title="Remove doc"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Standard Grid layout representation
   return (
     <div
       onClick={onSelect}
@@ -195,7 +437,7 @@ export default function PdfCard({
                 e.stopPropagation();
                 onMoveLeft();
               }}
-              className="p-1 rounded bg-slate-800/90 text-slate-300 hover:bg-indigo-600 hover:text-white transition-colors shadow"
+              className="p-1 rounded bg-slate-800/90 text-slate-300 hover:bg-indigo-600 hover:text-white transition-colors shadow cursor-pointer"
               title="Move left"
             >
               <MoveLeft className="w-3.5 h-3.5" />
@@ -207,7 +449,7 @@ export default function PdfCard({
                 e.stopPropagation();
                 onMoveRight();
               }}
-              className="p-1 rounded bg-slate-800/90 text-slate-300 hover:bg-indigo-600 hover:text-white transition-colors shadow"
+              className="p-1 rounded bg-slate-800/90 text-slate-300 hover:bg-indigo-600 hover:text-white transition-colors shadow cursor-pointer"
               title="Move right"
             >
               <MoveRight className="w-3.5 h-3.5" />
@@ -221,7 +463,7 @@ export default function PdfCard({
         /* LOCK SCREEN FOR ENCRYPTED ARCHIVES */
         <div className="flex-1 flex flex-col items-center justify-between min-h-[300px]" onClick={(e) => e.stopPropagation()}>
           <div className="w-full h-32 bg-rose-950/20 border border-rose-500/15 rounded-lg flex flex-col items-center justify-center p-3 text-center space-y-1.5 mt-2">
-            <div className="p-2.5 rounded-full bg-rose-500/10 text-rose-400">
+            <div className="p-2.5 rounded-full bg-rose-500/10 text-rose-450">
               <Lock className="w-5 h-5 animate-pulse" />
             </div>
             <span className="text-[11px] font-bold text-rose-300 uppercase tracking-widest font-mono">Encrypted</span>
@@ -253,7 +495,7 @@ export default function PdfCard({
             <button
               type="submit"
               disabled={unlocking}
-              className="w-full bg-gradient-to-r from-rose-500 to-red-600 text-white font-bold py-1.5 rounded-lg text-xs hover:from-rose-600 hover:to-red-700 shadow flex items-center justify-center space-x-1.5 cursor-pointer disabled:opacity-50"
+              className="w-full bg-gradient-to-r from-rose-500 to-red-650 text-white font-bold py-1.5 rounded-lg text-xs hover:from-rose-600 hover:to-red-750 shadow flex items-center justify-center space-x-1.5 cursor-pointer disabled:opacity-50 transition-all"
             >
               {unlocking ? (
                 <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -326,7 +568,7 @@ export default function PdfCard({
                   max={file.totalPages}
                   value={file.fromPage}
                   onChange={(e) => handleFromChange(parseInt(e.target.value) || 1)}
-                  className="w-full text-xs font-mono bg-slate-950 border border-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none rounded p-1.5 text-center text-slate-200"
+                  className="w-full text-xs font-mono bg-slate-950 border border-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none rounded p-1.5 text-center text-slate-200 font-bold"
                 />
               </div>
               <div className="flex-1">
@@ -337,7 +579,7 @@ export default function PdfCard({
                   max={file.totalPages}
                   value={file.toPage}
                   onChange={(e) => handleToChange(parseInt(e.target.value) || file.totalPages)}
-                  className="w-full text-xs font-mono bg-slate-950 border border-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none rounded p-1.5 text-center text-slate-200"
+                  className="w-full text-xs font-mono bg-slate-950 border border-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none rounded p-1.5 text-center text-slate-200 font-bold"
                 />
               </div>
             </div>
