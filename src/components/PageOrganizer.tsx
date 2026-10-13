@@ -82,6 +82,7 @@ export default function PageOrganizer({
 
   // Drag and drop mechanics for individual page items
   const handlePageDragStart = (e: React.DragEvent, index: number) => {
+    (window as any).__isInternalDrag = true;
     setDraggedIdx(index);
     e.dataTransfer.effectAllowed = 'move';
   };
@@ -100,6 +101,7 @@ export default function PageOrganizer({
   };
 
   const handlePageDragEnd = () => {
+    (window as any).__isInternalDrag = false;
     setDraggedIdx(null);
   };
 

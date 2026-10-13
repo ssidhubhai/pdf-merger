@@ -371,6 +371,7 @@ export default function App() {
   };
 
   const handleDragStart = (index: number) => {
+    (window as any).__isInternalDrag = true;
     setPreDragFiles(files);
     setDraggedIndex(index);
   };
@@ -390,6 +391,7 @@ export default function App() {
   };
 
   const handleDragEnd = () => {
+    (window as any).__isInternalDrag = false;
     setDraggedIndex(null);
     setMergedPdfUrl(null);
     if (preDragFiles) {
