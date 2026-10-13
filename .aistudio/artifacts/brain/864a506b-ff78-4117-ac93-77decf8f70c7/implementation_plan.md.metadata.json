@@ -1,0 +1,6 @@
+{
+  "summary": "Implementation plan for transforming the application into the Obsidian Workspace / PDF Studio workstation suite. Features a global dropzone for unlimited drag-and-drop file additions, the LaTeX-to-PDF split studio with 18-preset template library, PDF merger/splitter with page organizer, compression engine, and OCR/convert tooling in the refined obsidian dark aesthetic.",
+  "updatedAt": "2026-10-12T15:57:35.624247707Z",
+  "requestFeedback": true,
+  "userFacing": true
+}
